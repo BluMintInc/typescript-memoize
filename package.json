@@ -1,7 +1,7 @@
 {
-  "name": "typescript-memoize",
-  "version": "1.1.1",
-  "description": "Memoize decorator for Typescript",
+  "name": "@blumintinc/typescript-memoize",
+  "version": "1.2.0",
+  "description": "Memoize decorator for Typescript with deep equality",
   "main": "./dist/memoize-decorator.js",
   "module": "./dist/es2015/memoize-decorator.js",
   "typings": "./dist/memoize-decorator.d.ts",
@@ -20,7 +20,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/darrylhodgins/typescript-memoize.git"
+    "url": "git+https://github.com/BluMintInc/typescript-memoize.git"
   },
   "keywords": [
     "typescript",
@@ -28,12 +28,12 @@
     "functional",
     "decorator"
   ],
-  "author": "Darryl Hodgins <darrylh@darryh.ca>",
+  "author": "Joseph O'Connor",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/darrylhodgins/typescript-memoize/issues"
+    "url": "https://github.com/BluMintInc/typescript-memoize/issues"
   },
-  "homepage": "https://github.com/darrylhodgins/typescript-memoize#readme",
+  "homepage": "https://github.com/BluMintInc/typescript-memoize#readme",
   "devDependencies": {
     "@types/jasmine": "3.6.2",
     "@types/node": "14.14.9",
