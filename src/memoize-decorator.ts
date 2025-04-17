@@ -11,13 +11,13 @@ export function Memoize(args?: MemoizeArgs | MemoizeArgs['hashFunction']) {
 	let hashFunction: MemoizeArgs['hashFunction'];
 	let duration: MemoizeArgs['expiring'];
 	let tags: MemoizeArgs['tags'];
-	let useDeepEqual: MemoizeArgs['useDeepEqual'] = false;
+	let useDeepEqual: MemoizeArgs['useDeepEqual'] = true;
 
 	if (typeof args === 'object') {
 		hashFunction = args.hashFunction;
 		duration = args.expiring;
 		tags = args.tags;
-		useDeepEqual = args.useDeepEqual ?? false;
+		useDeepEqual = args.useDeepEqual ?? true;
 	} else {
 		hashFunction = args;
 	}
@@ -106,7 +106,7 @@ function getNewFunction(
 	hashFunction?: MemoizeArgs['hashFunction'], 
 	duration: number = 0, 
 	tags?: MemoizeArgs['tags'],
-	useDeepEqual: boolean = false
+	useDeepEqual: boolean = true
 ) {
 	const propMapName = Symbol(`__memoized_map__`);
 	const propDeepMapName = Symbol(`__memoized_deep_map__`);

@@ -106,6 +106,14 @@ describe('Memoize()', () => {
 			deepEqualSpy(arr);
 			return JSON.stringify(arr);
 		}
+
+		@Memoize({
+			useDeepEqual: false
+		})
+		public getGreetingShallow(greeting: string, planet: string): string {
+			getGreetingSpy.apply(this, arguments);
+			return greeting + ', ' + planet;
+		}
 	}
 
 	describe('when it is used in a bad way', () => {
@@ -169,13 +177,23 @@ describe('Memoize()', () => {
 		})
 
 		it('should call the original method once, even if the second parameter is different', () => {
-			let val1 = a.getGreeting('Hola', 'Mundo'); // Spanish, even
-			let val2 = a.getGreeting('Hola', 'Mars');
+			let val1 = a.getGreetingShallow('Hola', 'Mundo'); // Spanish, even
+			let val2 = a.getGreetingShallow('Hola', 'Mars');
 
 			expect(val1).toEqual('Hola, Mundo');
 			expect(val2).toEqual('Hola, Mundo');
 
 			expect(getGreetingSpy).toHaveBeenCalledTimes(1);
+		});
+
+		it('should consider all parameters with deep equality by default', () => {
+			let val1 = a.getGreeting('Hola', 'Mundo'); 
+			let val2 = a.getGreeting('Hola', 'Mars');
+
+			expect(val1).toEqual('Hola, Mundo');
+			expect(val2).toEqual('Hola, Mars'); // Different result with deep equality
+
+			expect(getGreetingSpy).toHaveBeenCalledTimes(2);
 		});
 
 		it('should call the original method once', () => {

@@ -24,7 +24,7 @@ You can use it in several ways:
 * Memoize a method which takes no parameters,
 * Memoize a method which varies based on its first parameter only,
 * Memoize a method which varies based on some combination of parameters
-* Memoize a method using deep equality for object comparison
+* Memoize a method using objects with deep equality comparison (default)
 
 You can call memoized methods *within* the same class, too.  This could be useful if you want to memoize the return value for an entire data set, and also a filtered or mapped version of that same set.
 
@@ -268,23 +268,32 @@ let sum4 = clearableFoo.getClearableSum(2, 2);
 
 ## Memoize with deep equality comparison
 
-By default, memoization uses shallow reference equality when comparing objects. If you need to use deep equality comparison (useful for objects with the same structure but different references), you can use the `useDeepEqual` option:
+By default, memoization now uses deep equality when comparing objects, which is useful for objects and arrays with the same structure but different references. If needed, you can disable deep equality with the `useDeepEqual: false` option:
 
 ```typescript
 import {Memoize} from 'typescript-memoize';
 
 class DeepEqualityFoo {
-    // Memoize using deep equality comparison
-    @Memoize({ useDeepEqual: true })
+    // Uses deep equality comparison by default
+    @Memoize()
     public processObject(obj: any) {
         // This will only be called once for objects with the same structure,
         // even if they are different instances
         return expensiveOperation(obj);
     }
 
+    // Disable deep equality if you want reference equality instead
+    @Memoize({
+        useDeepEqual: false
+    })
+    public processObjectWithReferenceEquality(obj: any) {
+        // This will be called for each new object reference,
+        // even if they have the same structure
+        return expensiveOperation(obj);
+    }
+
     // Combine with other options
     @Memoize({
-        useDeepEqual: true,
         expiring: 5000, // expire after 5 seconds
         tags: ["objects"]
     })
@@ -320,6 +329,14 @@ const result4 = deepFoo.processComplexObject({
         } 
     }
 });
+
+// Using reference equality will call the method for each new object
+const refObj = { id: 123, name: "Test" };
+const result5 = deepFoo.processObjectWithReferenceEquality(refObj);
+// This will be memoized since it's the same reference
+const result6 = deepFoo.processObjectWithReferenceEquality(refObj);
+// This will call the method again since it's a new reference
+const result7 = deepFoo.processObjectWithReferenceEquality({ id: 123, name: "Test" });
 ```
 
-The `useDeepEqual` option uses the [fast-deep-equal](https://www.npmjs.com/package/fast-deep-equal) package for efficient deep equality comparisons.
+The deep equality comparison uses the [fast-deep-equal](https://www.npmjs.com/package/fast-deep-equal) package for efficient deep equality comparisons.
