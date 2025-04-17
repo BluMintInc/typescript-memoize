@@ -9,6 +9,7 @@ describe('Memoize()', () => {
 	let valueSpy = jasmine.createSpy('valueSpy');
 	let getGreetingSpy = jasmine.createSpy('getGreetingSpy');
 	let multiplySpy = jasmine.createSpy('multiplySpy');
+	let deepEqualSpy = jasmine.createSpy('deepEqualSpy');
 
 	let a: MyClass;
 	let b: MyClass;
@@ -21,6 +22,7 @@ describe('Memoize()', () => {
 		valueSpy.calls.reset();
 		getGreetingSpy.calls.reset();
 		multiplySpy.calls.reset();
+		deepEqualSpy.calls.reset();
 	});
 	class MyClass {
 		@Memoize()
@@ -86,6 +88,23 @@ describe('Memoize()', () => {
 		public getGreeting4(greeting: string, planet: string): string {
 			getGreetingSpy.apply(this, arguments);
 			return greeting + ', ' + planet;
+		}
+
+		@Memoize({
+			useDeepEqual: true
+		})
+		public processObject(obj: any): string {
+			deepEqualSpy(obj);
+			return JSON.stringify(obj);
+		}
+
+		@Memoize({
+			useDeepEqual: true,
+			expiring: 100
+		})
+		public processArrayDeep(arr: any[]): string {
+			deepEqualSpy(arr);
+			return JSON.stringify(arr);
 		}
 	}
 
@@ -268,6 +287,80 @@ describe('Memoize()', () => {
 			expect(getGreetingSpy).toHaveBeenCalledTimes(5);
 		});
 
+	});
+
+	describe('when using deep equality', () => {
+		it('should call the original method with the original arguments', () => {
+			const obj = { name: 'Test', age: 25 };
+			const result = a.processObject(obj);
+			expect(deepEqualSpy).toHaveBeenCalledWith(obj);
+			expect(result).toEqual(JSON.stringify(obj));
+		});
+
+		it('should memoize based on deep equality, not reference equality', () => {
+			// First call with an object
+			const obj1 = { name: 'Test', age: 25 };
+			const result1 = a.processObject(obj1);
+			
+			// Second call with different object instance but same content
+			const obj2 = { name: 'Test', age: 25 };
+			const result2 = a.processObject(obj2);
+			
+			expect(obj1).not.toBe(obj2); // Different references
+			expect(result1).toEqual(result2);
+			expect(deepEqualSpy).toHaveBeenCalledTimes(1); // Only called once
+		});
+
+		it('should recognize different objects as different keys', () => {
+			const obj1 = { name: 'Test', age: 25 };
+			const result1 = a.processObject(obj1);
+			
+			const obj2 = { name: 'Test', age: 30 }; // Different age
+			const result2 = a.processObject(obj2);
+			
+			expect(result1).not.toEqual(result2);
+			expect(deepEqualSpy).toHaveBeenCalledTimes(2); // Called twice for different objects
+		});
+
+		it('should handle nested objects correctly', () => {
+			const obj1 = { user: { name: 'Test', details: { age: 25 } } };
+			const result1 = a.processObject(obj1);
+			
+			const obj2 = { user: { name: 'Test', details: { age: 25 } } };
+			const result2 = a.processObject(obj2);
+			
+			expect(result1).toEqual(result2);
+			expect(deepEqualSpy).toHaveBeenCalledTimes(1);
+		});
+
+		it('should handle arrays correctly', () => {
+			const arr1 = [1, 2, { name: 'Test' }];
+			const result1 = a.processArrayDeep(arr1);
+			
+			const arr2 = [1, 2, { name: 'Test' }];
+			const result2 = a.processArrayDeep(arr2);
+			
+			expect(result1).toEqual(result2);
+			expect(deepEqualSpy).toHaveBeenCalledTimes(1);
+		});
+
+		it('should expire deep equality cache after duration', (done) => {
+			const arr = [1, 2, { name: 'Test' }];
+			const result1 = a.processArrayDeep(arr);
+			
+			setTimeout(() => {
+				const result2 = a.processArrayDeep(arr);
+				expect(deepEqualSpy).toHaveBeenCalledTimes(1);
+				expect(result1).toEqual(result2);
+				
+				setTimeout(() => {
+					const result3 = a.processArrayDeep(arr);
+					expect(deepEqualSpy).toHaveBeenCalledTimes(2);
+					expect(result1).toEqual(result3); // Values are the same
+					done();
+				}, 70);
+			}, 50);
+		});
 	});
 
 });

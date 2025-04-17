@@ -18,12 +18,13 @@ npm install --save typescript-memoize
 @Memoize(hashFunction?: (...args: any[]) => any)
 ```
 
-You can use it in four ways:
+You can use it in several ways:
 
 * Memoize a `get` accessor,
 * Memoize a method which takes no parameters,
 * Memoize a method which varies based on its first parameter only,
 * Memoize a method which varies based on some combination of parameters
+* Memoize a method using deep equality for object comparison
 
 You can call memoized methods *within* the same class, too.  This could be useful if you want to memoize the return value for an entire data set, and also a filtered or mapped version of that same set.
 
@@ -264,3 +265,61 @@ let greeterVal4 = clearableFoo.getClearableGreeting('Darryl', 'Earth');
 let sum4 = clearableFoo.getClearableSum(2, 2);
 
 ```
+
+## Memoize with deep equality comparison
+
+By default, memoization uses shallow reference equality when comparing objects. If you need to use deep equality comparison (useful for objects with the same structure but different references), you can use the `useDeepEqual` option:
+
+```typescript
+import {Memoize} from 'typescript-memoize';
+
+class DeepEqualityFoo {
+    // Memoize using deep equality comparison
+    @Memoize({ useDeepEqual: true })
+    public processObject(obj: any) {
+        // This will only be called once for objects with the same structure,
+        // even if they are different instances
+        return expensiveOperation(obj);
+    }
+
+    // Combine with other options
+    @Memoize({
+        useDeepEqual: true,
+        expiring: 5000, // expire after 5 seconds
+        tags: ["objects"]
+    })
+    public processComplexObject(obj: any) {
+        return expensiveOperation(obj);
+    }
+}
+```
+
+We can call these methods and get memoized results based on deep equality:
+
+```typescript
+let deepFoo = new DeepEqualityFoo();
+
+// First call with an object
+const result1 = deepFoo.processObject({ id: 123, name: "Test" });
+
+// Second call with different object instance but same structure
+// Will return the memoized result without calling the original method again
+const result2 = deepFoo.processObject({ id: 123, name: "Test" });
+
+// Call with different object structure
+// Will call the original method again
+const result3 = deepFoo.processObject({ id: 456, name: "Different" });
+
+// Deep equality works with complex nested objects too
+const result4 = deepFoo.processComplexObject({ 
+    user: { 
+        id: 123, 
+        details: { 
+            age: 30, 
+            preferences: ["red", "blue"] 
+        } 
+    }
+});
+```
+
+The `useDeepEqual` option uses the [fast-deep-equal](https://www.npmjs.com/package/fast-deep-equal) package for efficient deep equality comparisons.
