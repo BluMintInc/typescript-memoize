@@ -15,7 +15,19 @@ module.exports = function(config){
 			compilerOptions: {
 				noEmitHelpers: false,
 				importHelpers: true,
+				esModuleInterop: true,
+				allowSyntheticDefaultImports: true,
 				lib: ["es2016"]
+			},
+			bundlerOptions: {
+				resolve: {
+					alias: {
+						"@blumintinc/fast-deep-equal": "node_modules/@blumintinc/fast-deep-equal/index.js"
+					}
+				},
+				transforms: [
+					require("karma-typescript-es6-transform")()
+				]
 			},
 			reports: {
 				html: {
