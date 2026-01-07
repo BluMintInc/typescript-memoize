@@ -1,11 +1,11 @@
-// const equal = require('fast-deep-equal');
+import equal from '@blumintinc/fast-deep-equal';
 
 interface MemoizeArgs {
 	expiring?: number;
 	hashFunction?: boolean | ((...args: any[]) => any);
 	tags?: string[];
 	useDeepEqual?: boolean;
-}import equal from '@blumintinc/fast-deep-equal';
+}
 
 
 export function Memoize(args?: MemoizeArgs | MemoizeArgs['hashFunction']) {
