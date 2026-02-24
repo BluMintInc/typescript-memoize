@@ -114,6 +114,32 @@ describe('Memoize()', () => {
 			getGreetingSpy.apply(this, arguments);
 			return greeting + ', ' + planet;
 		}
+
+		@Memoize({
+			useDeepEqual: false
+		})
+		public getNumberShallow(): number {
+			getNumberSpy();
+			return Math.random();
+		}
+
+		@Memoize({
+			useDeepEqual: false,
+			expiring: 100
+		})
+		public getExpiringShallow(key: string): string {
+			getGreetingSpy();
+			return key + '_' + Math.random();
+		}
+
+		@Memoize({
+			useDeepEqual: false,
+			tags: ['shallowTag']
+		})
+		public getTaggedShallow(key: string): string {
+			getGreetingSpy();
+			return key + '_' + Math.random();
+		}
 	}
 
 	describe('when it is used in a bad way', () => {
@@ -187,7 +213,7 @@ describe('Memoize()', () => {
 		});
 
 		it('should consider all parameters with deep equality by default', () => {
-			let val1 = a.getGreeting('Hola', 'Mundo'); 
+			let val1 = a.getGreeting('Hola', 'Mundo');
 			let val2 = a.getGreeting('Hola', 'Mars');
 
 			expect(val1).toEqual('Hola, Mundo');
@@ -203,6 +229,40 @@ describe('Memoize()', () => {
 			expect(val1).toEqual('Bonjour, le monde');
 			expect(val2).toEqual('Hello, World');
 
+			expect(getGreetingSpy).toHaveBeenCalledTimes(2);
+		});
+
+		it('should memoize shallow no-arg method', () => {
+			let val1 = a.getNumberShallow();
+			let val2 = a.getNumberShallow();
+			expect(val1).toEqual(val2);
+			expect(getNumberSpy).toHaveBeenCalledTimes(1);
+		});
+
+		it('should expire shallow equality cache after duration', (done) => {
+			let val1 = a.getExpiringShallow('key');
+
+			setTimeout(() => {
+				let val2 = a.getExpiringShallow('key');
+				expect(val1).toEqual(val2);
+				expect(getGreetingSpy).toHaveBeenCalledTimes(1);
+
+				setTimeout(() => {
+					let val3 = a.getExpiringShallow('key');
+					expect(getGreetingSpy).toHaveBeenCalledTimes(2);
+					done();
+				}, 70);
+			}, 50);
+		});
+
+		it('should clear shallow tagged cache', () => {
+			let val1 = a.getTaggedShallow('x');
+			let val2 = a.getTaggedShallow('x');
+			expect(val1).toEqual(val2);
+			expect(getGreetingSpy).toHaveBeenCalledTimes(1);
+
+			clear(['shallowTag']);
+			let val3 = a.getTaggedShallow('x');
 			expect(getGreetingSpy).toHaveBeenCalledTimes(2);
 		});
 	});
@@ -305,6 +365,351 @@ describe('Memoize()', () => {
 			expect(getGreetingSpy).toHaveBeenCalledTimes(5);
 		});
 
+	});
+
+	describe('when using opaque class instances', () => {
+		let opaqueCallSpy = jasmine.createSpy('opaqueCallSpy');
+
+		// Simulates Firestore Transaction: a class instance with zero enumerable
+		// properties. All internal state is non-enumerable, just like native bindings.
+		class OpaqueInstance {
+			constructor() {
+				Object.defineProperty(this, '_id', {
+					value: Symbol(),
+					enumerable: false,
+					writable: false,
+				});
+			}
+		}
+
+		class OpaqueTestClass {
+			@Memoize()
+			public process(scope: OpaqueInstance): number {
+				opaqueCallSpy();
+				return Math.random();
+			}
+
+			@Memoize()
+			public processWithProps(props: { id: string; scope: OpaqueInstance }): number {
+				opaqueCallSpy();
+				return Math.random();
+			}
+
+			@Memoize(true)
+			public processMulti(id: string, scope: OpaqueInstance): number {
+				opaqueCallSpy();
+				return Math.random();
+			}
+		}
+
+		let instance: OpaqueTestClass;
+
+		beforeEach(() => {
+			instance = new OpaqueTestClass();
+			opaqueCallSpy.calls.reset();
+		});
+
+		it('should use reference equality for opaque class instances', () => {
+			const scope1 = new OpaqueInstance();
+			const scope2 = new OpaqueInstance();
+
+			instance.process(scope1);
+			expect(opaqueCallSpy).toHaveBeenCalledTimes(1);
+
+			// Different opaque instance -> cache miss -> re-executes
+			instance.process(scope2);
+			expect(opaqueCallSpy).toHaveBeenCalledTimes(2);
+		});
+
+		it('should cache hit for the same opaque instance', () => {
+			const scope = new OpaqueInstance();
+
+			instance.process(scope);
+			expect(opaqueCallSpy).toHaveBeenCalledTimes(1);
+
+			// Same opaque instance -> cache hit
+			instance.process(scope);
+			expect(opaqueCallSpy).toHaveBeenCalledTimes(1);
+		});
+
+		it('should detect opaque instances inside object properties', () => {
+			const scope1 = new OpaqueInstance();
+			const scope2 = new OpaqueInstance();
+
+			instance.processWithProps({ id: 'x', scope: scope1 });
+			expect(opaqueCallSpy).toHaveBeenCalledTimes(1);
+
+			// Same id but different opaque scope -> cache miss
+			instance.processWithProps({ id: 'x', scope: scope2 });
+			expect(opaqueCallSpy).toHaveBeenCalledTimes(2);
+		});
+
+		it('should detect opaque instances in multi-arg methods', () => {
+			const scope1 = new OpaqueInstance();
+			const scope2 = new OpaqueInstance();
+
+			instance.processMulti('userId', scope1);
+			expect(opaqueCallSpy).toHaveBeenCalledTimes(1);
+
+			// Same id but different opaque scope -> cache miss
+			instance.processMulti('userId', scope2);
+			expect(opaqueCallSpy).toHaveBeenCalledTimes(2);
+		});
+
+		it('should still use deep equality for plain empty objects', () => {
+			const plainSpy = jasmine.createSpy('plainSpy');
+
+			class PlainTestClass {
+				@Memoize()
+				public process(obj: any): number {
+					plainSpy();
+					return Math.random();
+				}
+			}
+
+			const plainInstance = new PlainTestClass();
+
+			plainInstance.process({});
+			expect(plainSpy).toHaveBeenCalledTimes(1);
+
+			// Different empty plain object reference -> still cache hit (deep equal)
+			plainInstance.process({});
+			expect(plainSpy).toHaveBeenCalledTimes(1);
+		});
+
+		it('should still use deep equality for Object.create({}) instances', () => {
+			const createSpy = jasmine.createSpy('createSpy');
+
+			class CreateTestClass {
+				@Memoize()
+				public process(obj: any): number {
+					createSpy();
+					return Math.random();
+				}
+			}
+
+			const createInstance = new CreateTestClass();
+
+			createInstance.process(Object.create({}));
+			expect(createSpy).toHaveBeenCalledTimes(1);
+
+			// Different Object.create({}) reference -> still cache hit (deep equal)
+			createInstance.process(Object.create({}));
+			expect(createSpy).toHaveBeenCalledTimes(1);
+		});
+
+		it('should use deep equality for Date instances (not opaque)', () => {
+			const dateSpy = jasmine.createSpy('dateSpy');
+
+			class DateTestClass {
+				@Memoize()
+				public process(d: Date): number {
+					dateSpy();
+					return Math.random();
+				}
+			}
+
+			const dateInstance = new DateTestClass();
+
+			dateInstance.process(new Date(1000));
+			expect(dateSpy).toHaveBeenCalledTimes(1);
+
+			// Same date value, different reference -> cache hit (deep equal)
+			dateInstance.process(new Date(1000));
+			expect(dateSpy).toHaveBeenCalledTimes(1);
+
+			// Different date value -> cache miss
+			dateInstance.process(new Date(2000));
+			expect(dateSpy).toHaveBeenCalledTimes(2);
+		});
+
+		it('should use deep equality for RegExp instances (not opaque)', () => {
+			const regexpSpy = jasmine.createSpy('regexpSpy');
+
+			class RegExpTestClass {
+				@Memoize()
+				public process(r: RegExp): number {
+					regexpSpy();
+					return Math.random();
+				}
+			}
+
+			const regexpInstance = new RegExpTestClass();
+
+			regexpInstance.process(/test/g);
+			expect(regexpSpy).toHaveBeenCalledTimes(1);
+
+			// Same pattern, different reference -> cache hit
+			regexpInstance.process(/test/g);
+			expect(regexpSpy).toHaveBeenCalledTimes(1);
+		});
+
+		it('should handle null and undefined arguments correctly', () => {
+			const nullSpy = jasmine.createSpy('nullSpy');
+
+			class NullTestClass {
+				@Memoize()
+				public process(val: any): number {
+					nullSpy();
+					return Math.random();
+				}
+			}
+
+			const nullInstance = new NullTestClass();
+
+			nullInstance.process(null);
+			expect(nullSpy).toHaveBeenCalledTimes(1);
+
+			// Same null -> cache hit
+			nullInstance.process(null);
+			expect(nullSpy).toHaveBeenCalledTimes(1);
+		});
+
+		it('should handle mixed opaque and non-opaque in array args', () => {
+			const mixedSpy = jasmine.createSpy('mixedSpy');
+
+			class MixedArrayTestClass {
+				@Memoize(true)
+				public process(id: string, data: { count: number }, scope: OpaqueInstance): number {
+					mixedSpy();
+					return Math.random();
+				}
+			}
+
+			const mixedInstance = new MixedArrayTestClass();
+			const scope1 = new OpaqueInstance();
+			const scope2 = new OpaqueInstance();
+
+			mixedInstance.process('a', { count: 1 }, scope1);
+			expect(mixedSpy).toHaveBeenCalledTimes(1);
+
+			// Same data, same scope -> cache hit
+			mixedInstance.process('a', { count: 1 }, scope1);
+			expect(mixedSpy).toHaveBeenCalledTimes(1);
+
+			// Same data, different scope -> cache miss
+			mixedInstance.process('a', { count: 1 }, scope2);
+			expect(mixedSpy).toHaveBeenCalledTimes(2);
+
+			// Different data, same scope -> cache miss
+			mixedInstance.process('a', { count: 2 }, scope1);
+			expect(mixedSpy).toHaveBeenCalledTimes(3);
+		});
+
+		it('should handle objects with different keys as different', () => {
+			const keysSpy = jasmine.createSpy('keysSpy');
+			const scope = new OpaqueInstance();
+
+			class KeysTestClass {
+				@Memoize()
+				public process(obj: any): number {
+					keysSpy();
+					return Math.random();
+				}
+			}
+
+			const keysInstance = new KeysTestClass();
+
+			keysInstance.process({ id: 'x', scope: scope });
+			expect(keysSpy).toHaveBeenCalledTimes(1);
+
+			// Different key count -> cache miss
+			keysInstance.process({ id: 'x', scope: scope, extra: true });
+			expect(keysSpy).toHaveBeenCalledTimes(2);
+		});
+
+		it('should use deep equality for Map instances (not opaque)', () => {
+			const mapSpy = jasmine.createSpy('mapSpy');
+
+			class MapTestClass {
+				@Memoize()
+				public process(m: Map<string, number>): number {
+					mapSpy();
+					return Math.random();
+				}
+			}
+
+			const mapInstance = new MapTestClass();
+			const m1 = new Map([['a', 1]]);
+			const m2 = new Map([['a', 1]]);
+
+			mapInstance.process(m1);
+			expect(mapSpy).toHaveBeenCalledTimes(1);
+
+			// Same content, different reference -> cache hit (deep equal)
+			mapInstance.process(m2);
+			expect(mapSpy).toHaveBeenCalledTimes(1);
+		});
+
+		it('should handle arrays with different lengths', () => {
+			const arrSpy = jasmine.createSpy('arrSpy');
+			const scope1 = new OpaqueInstance();
+			const scope2 = new OpaqueInstance();
+
+			class ArrayLenTestClass {
+				@Memoize(true)
+				public process(a: string, b?: OpaqueInstance): number {
+					arrSpy();
+					return Math.random();
+				}
+			}
+
+			const arrInstance = new ArrayLenTestClass();
+
+			arrInstance.process('x', scope1);
+			expect(arrSpy).toHaveBeenCalledTimes(1);
+
+			// Different args length -> cache miss
+			arrInstance.process('x');
+			expect(arrSpy).toHaveBeenCalledTimes(2);
+		});
+
+		it('should handle opaque instance compared to non-opaque', () => {
+			const mixSpy = jasmine.createSpy('mixSpy');
+
+			class MixTypeTestClass {
+				@Memoize()
+				public process(val: any): number {
+					mixSpy();
+					return Math.random();
+				}
+			}
+
+			const mixInstance = new MixTypeTestClass();
+
+			mixInstance.process(new OpaqueInstance());
+			expect(mixSpy).toHaveBeenCalledTimes(1);
+
+			// Plain object vs opaque -> cache miss
+			mixInstance.process({ name: 'test' });
+			expect(mixSpy).toHaveBeenCalledTimes(2);
+		});
+
+		it('should use deep equality for objects with same opaque reference', () => {
+			const sameRefSpy = jasmine.createSpy('sameRefSpy');
+			const sharedScope = new OpaqueInstance();
+
+			class SameRefTestClass {
+				@Memoize()
+				public process(props: { id: string; scope: OpaqueInstance }): number {
+					sameRefSpy();
+					return Math.random();
+				}
+			}
+
+			const sameRefInstance = new SameRefTestClass();
+
+			sameRefInstance.process({ id: 'a', scope: sharedScope });
+			expect(sameRefSpy).toHaveBeenCalledTimes(1);
+
+			// Same opaque ref, same id -> cache hit
+			sameRefInstance.process({ id: 'a', scope: sharedScope });
+			expect(sameRefSpy).toHaveBeenCalledTimes(1);
+
+			// Same opaque ref, different id -> cache miss
+			sameRefInstance.process({ id: 'b', scope: sharedScope });
+			expect(sameRefSpy).toHaveBeenCalledTimes(2);
+		});
 	});
 
 	describe('when using deep equality', () => {

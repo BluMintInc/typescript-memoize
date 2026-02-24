@@ -1,6 +1,6 @@
 {
   "name": "@blumintinc/typescript-memoize",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Memoize decorator for Typescript with deep equality",
   "main": "./dist/memoize-decorator.js",
   "module": "./dist/es2015/memoize-decorator.js",

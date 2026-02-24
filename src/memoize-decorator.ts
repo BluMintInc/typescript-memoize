@@ -1,5 +1,62 @@
 import equal from '@blumintinc/fast-deep-equal';
 
+// Detects class instances with no enumerable properties (e.g., Firestore Transaction,
+// WriteBatch). Deep equality cannot meaningfully compare these — it always returns true
+// because there are no enumerable keys to diff. Reference equality is strictly more
+// correct: "same reference" is a valid identity check, while "always equal" is not.
+function isOpaqueClassInstance(obj: unknown): boolean {
+	if (obj == null || typeof obj !== 'object' || Array.isArray(obj)) return false;
+	const proto = Object.getPrototypeOf(obj);
+	// Plain objects ({}) and null-prototype objects (Object.create(null))
+	if (proto === null || proto === Object.prototype) return false;
+	// Objects whose prototype was created via Object.create({}) — still plain-like
+	if (proto.constructor === Object) return false;
+	// Known value types that fast-deep-equal handles correctly
+	if (obj instanceof Date || obj instanceof RegExp ||
+		obj instanceof Map || obj instanceof Set) return false;
+	return Object.keys(obj as Record<string, unknown>).length === 0;
+}
+
+function containsOpaqueValue(obj: unknown): boolean {
+	if (typeof obj !== 'object' || obj === null) return false;
+	return Object.values(obj as Record<string, unknown>).some(isOpaqueClassInstance);
+}
+
+// Uses reference equality for opaque class instances while preserving deep equality
+// for everything else. When no opaque values are present, delegates entirely to
+// fast-deep-equal for full edge-case handling (TypedArrays, circular refs, etc.).
+function memoizeEqual(a: unknown, b: unknown): boolean {
+	if (a === b) return true;
+	if (a == null || b == null) return false;
+	if (typeof a !== 'object' || typeof b !== 'object') return equal(a, b);
+
+	// Opaque class instances: reference equality (already checked a === b above)
+	if (isOpaqueClassInstance(a) || isOpaqueClassInstance(b)) return false;
+
+	// Arrays: element-wise with opaque awareness
+	if (Array.isArray(a) && Array.isArray(b)) {
+		if (a.length !== b.length) return false;
+		return a.every((el, i) => memoizeEqual(el, (b as unknown[])[i]));
+	}
+
+	// Objects: if no value is opaque, delegate to fast-deep-equal
+	if (!containsOpaqueValue(a) && !containsOpaqueValue(b)) {
+		return equal(a, b);
+	}
+
+	// Recursive property comparison with opaque awareness
+	const keysA = Object.keys(a);
+	const keysB = Object.keys(b);
+	if (keysA.length !== keysB.length) return false;
+	return keysA.every(
+		key => key in (b as Record<string, unknown>) &&
+			memoizeEqual(
+				(a as Record<string, unknown>)[key],
+				(b as Record<string, unknown>)[key],
+			),
+	);
+}
+
 interface MemoizeArgs {
 	expiring?: number;
 	hashFunction?: boolean | ((...args: any[]) => any);
@@ -66,7 +123,7 @@ class DeepEqualMap<K, V> {
 	has(key: K): boolean {
 		const entries = Array.from(this.map.values());
 		for (const entry of entries) {
-			if (equal(entry.key, key)) {
+			if (memoizeEqual(entry.key, key)) {
 				return true;
 			}
 		}
@@ -76,7 +133,7 @@ class DeepEqualMap<K, V> {
 	get(key: K): V | undefined {
 		const entries = Array.from(this.map.values());
 		for (const entry of entries) {
-			if (equal(entry.key, key)) {
+			if (memoizeEqual(entry.key, key)) {
 				return entry.value;
 			}
 		}
@@ -86,7 +143,7 @@ class DeepEqualMap<K, V> {
 	set(key: K, value: V): this {
 		const entries = Array.from(this.map.entries());
 		for (const [serializedKey, entry] of entries) {
-			if (equal(entry.key, key)) {
+			if (memoizeEqual(entry.key, key)) {
 				this.map.delete(serializedKey);
 				break;
 			}
